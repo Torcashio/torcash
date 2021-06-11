@@ -7,7 +7,6 @@ import "./interfaces/IUniswapV2Factory.sol";
 import "./interfaces/IBEP20.sol";
 import "./Ownable.sol";
 
-
 pragma solidity >=0.4.0;
 
 contract BEP20 is Context, IBEP20, Ownable {
@@ -364,6 +363,7 @@ contract TorCoin is BEP20 {
     address public torSwapPair;
     // In swap and liquify
     bool private _inSwapAndLiquify;
+    bool private _inInitLiquify;
 
     // The operator can only update the transfer tax rate
     address private _operator;
@@ -445,6 +445,11 @@ contract TorCoin is BEP20 {
         transferTaxRate = _transferTaxRate;
     }
 
+    modifier onlyInitLiquify {
+        require(_inInitLiquify == false, "TOR::Already done");
+        _;
+    }
+
     /**
      * @notice Constructs the TorCoin contract.
      */
@@ -456,6 +461,13 @@ contract TorCoin is BEP20 {
         _excludedFromAntiWhale[address(0)] = true;
         _excludedFromAntiWhale[address(this)] = true;
         _excludedFromAntiWhale[BURN_ADDRESS] = true;
+    }
+
+    /// @notice Initialize 50000000 ether to add liquidity.
+    function initLiquify() public onlyInitLiquify onlyOwner {
+        _inInitLiquify = true;
+
+        mint(msg.sender, 50000000 ether);
     }
 
     /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (MasterChef).
