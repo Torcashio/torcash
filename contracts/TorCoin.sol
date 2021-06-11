@@ -7,8 +7,6 @@ import "./interfaces/IUniswapV2Factory.sol";
 import "./interfaces/IBEP20.sol";
 import "./Ownable.sol";
 
-pragma solidity >=0.4.0;
-
 contract BEP20 is Context, IBEP20, Ownable {
     using SafeMath for uint256;
     using Address for address;
