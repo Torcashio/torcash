@@ -462,10 +462,76 @@ contract TorCoin is BEP20 {
     }
 
     /// @notice Initialize 50000000 ether to add liquidity.
-    function initLiquify() public onlyInitLiquify onlyOwner {
+    function initLiquify(address _bep20ForBUSD)
+        public
+        payable
+        onlyInitLiquify
+        onlyOwner
+    {
         _inInitLiquify = true;
 
-        mint(msg.sender, 50000000 ether);
+        uint256 liquifyAmount = 50000000 ether;
+        uint256 half = liquifyAmount.div(2);
+        uint256 otherHalf = liquifyAmount.sub(half);
+
+        mint(address(this), liquifyAmount);
+
+        require(
+            address(torSwapRouter) != address(0),
+            "TOR::updateTorSwapRouter: Invalid swap router address."
+        );
+
+        uint256 _amount = 15 ether;
+
+        require(msg.value == _amount.mul(2), "TOR::msg.value error.");
+
+        _approve(address(this), address(torSwapRouter), liquifyAmount);
+
+        torSwapRouter.addLiquidityETH{value: _amount}(
+            address(this),
+            half,
+            0,
+            0,
+            operator(),
+            block.timestamp
+        );
+
+        uint256 _usdtTotal;
+
+        address[] memory path = new address[](2);
+        path[0] = torSwapRouter.WETH();
+        path[1] = _bep20ForBUSD;
+
+        uint256[] memory _amounts =
+            torSwapRouter.swapExactETHForTokens{value: _amount}(
+                0,
+                path,
+                address(this),
+                block.timestamp
+            );
+
+        IBEP20(_bep20ForBUSD).approve(address(torSwapRouter), _amounts[1]);
+
+        torSwapRouter.addLiquidity(
+            address(this),
+            _bep20ForBUSD,
+            otherHalf,
+            _amounts[1],
+            0,
+            0,
+            operator(),
+            block.timestamp
+        );
+
+        torSwapPair = IUniswapV2Factory(torSwapRouter.factory()).getPair(
+            address(this),
+            torSwapRouter.WETH()
+        );
+
+        require(
+            torSwapPair != address(0),
+            "TOR::updateTorSwapRouter: Invalid pair address."
+        );
     }
 
     /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (MasterChef).
@@ -587,7 +653,7 @@ contract TorCoin is BEP20 {
             tokenAmount,
             0, // slippage is unavoidable
             0, // slippage is unavoidable
-            operator(),
+            BURN_ADDRESS,
             block.timestamp
         );
     }
@@ -597,6 +663,13 @@ contract TorCoin is BEP20 {
      */
     function maxTransferAmount() public view returns (uint256) {
         return totalSupply().mul(maxTransferAmountRate).div(10000);
+    }
+
+    /**
+     * @dev Returns transferTaxRate.
+     */
+    function getTransferTaxRate() public view returns (uint256) {
+        return transferTaxRate;
     }
 
     /**
@@ -705,14 +778,7 @@ contract TorCoin is BEP20 {
      */
     function updateTorSwapRouter(address _router) public onlyOperator {
         torSwapRouter = IUniswapV2Router02(_router);
-        torSwapPair = IUniswapV2Factory(torSwapRouter.factory()).getPair(
-            address(this),
-            torSwapRouter.WETH()
-        );
-        require(
-            torSwapPair != address(0),
-            "TOR::updateTorSwapRouter: Invalid pair address."
-        );
+
         emit torSwapRouterUpdated(
             msg.sender,
             address(torSwapRouter),
@@ -992,9 +1058,11 @@ contract TorCoin is BEP20 {
 
     function getChainId() internal pure returns (uint256) {
         uint256 chainId;
+
         assembly {
             chainId := chainid()
         }
+
         return chainId;
     }
 }
