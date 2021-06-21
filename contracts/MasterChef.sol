@@ -94,6 +94,7 @@ contract MasterChef is Ownable {
     IUniswapV2Router02 public SWAP_ROUTER;
     uint256 public TOR_BURN_TOTAL;
     uint256[] public REFERRAL_PERCENTS = [250, 150, 50];
+    bool private INITIALIZED;
 
     event Deposit(
         address indexed sender,
@@ -116,17 +117,34 @@ contract MasterChef is Ownable {
     );
     event UpdatePool(uint256 indexed pid, uint256 multiplier, uint256 timeAt);
 
+    modifier initializer() {
+        require(INITIALIZED, "!initializer");
+        _;
+    }
+
     constructor(
-        uint256 _startedAt,
         uint256 _torPerDay,
         address _dev,
         address _fee
     ) public {
-        STARTED_AT = _startedAt == 0 ? block.number : _startedAt;
         TOR_PER_DAY = _torPerDay;
 
         DEV_ADDRESS = _dev;
         FEE_ADDRESS = _fee;
+    }
+
+    function initialize(uint256 _startedAt) external onlyOwner {
+        require(!INITIALIZED, "Contract is already initialized");
+
+        STARTED_AT = _startedAt == 0 ? block.number : _startedAt;
+
+        for (uint256 _pid = 0; _pid < POOL_INFOR.length; _pid++) {
+            if (POOL_INFOR[_pid].lastRewardBlock == 0) {
+                POOL_INFOR[_pid].lastRewardBlock = _startedAt;
+            }
+        }
+
+        INITIALIZED = true;
     }
 
     function poolLength() external view returns (uint256) {
@@ -163,14 +181,15 @@ contract MasterChef is Ownable {
         );
     }
 
-    function add(
+    function addPool(
         uint256 _allocPoint,
         address _lpToken,
         uint16 _depositFeeBP,
         uint256[] memory _denominations,
         bool _withUpdate,
         address[] memory _anonymousTrees,
-        address[] memory _paths
+        address[] memory _paths,
+        uint256 _lastRewardBlock
     ) public onlyOwner {
         require(
             _depositFeeBP <= PERCENTS_DIVIDER,
@@ -181,15 +200,16 @@ contract MasterChef is Ownable {
             massUpdatePools();
         }
 
-        uint256 _lastRewardBlock =
-            block.number > STARTED_AT ? block.number : STARTED_AT;
+        // uint256 _lastRewardBlock =
+        //     block.number > STARTED_AT ? block.number : STARTED_AT;
+
         TOTAL_ALLOC_POINT = TOTAL_ALLOC_POINT.add(_allocPoint);
 
         POOL_INFOR.push(
             PoolInfo({
                 lpToken: ITorCoin(_lpToken),
                 allocPoint: _allocPoint,
-                lastRewardBlock: _lastRewardBlock,
+                lastRewardBlock: _lastRewardBlock > 0 ? _lastRewardBlock : 0,
                 accTorPerShare: 0,
                 depositFeeBP: _depositFeeBP,
                 denominations: _denominations,
@@ -341,7 +361,7 @@ contract MasterChef is Ownable {
             _amount
         );
 
-        if (isExcludedFromLP(address(_pool.lpToken))) {
+        if (isExcludedFromLP(address(_pool.lpToken)) || isDevMode()) {
             return (_amount, 0);
         }
 
@@ -367,7 +387,7 @@ contract MasterChef is Ownable {
         uint256 _pid,
         uint256 _amount,
         address _referrer
-    ) external {
+    ) external initializer {
         PoolInfo storage _pool = POOL_INFOR[_pid];
         UserInfo storage _userInfo = USER_INFO[_pid][_msgSender()];
         DepositInfo memory _depositInfo;
@@ -460,7 +480,7 @@ contract MasterChef is Ownable {
         bytes32 _commitment,
         uint256 _pid,
         uint256 _depositId
-    ) public {
+    ) external initializer {
         PoolInfo storage _pool = POOL_INFOR[_pid];
         User storage user = USERS[_msgSender()];
         DepositInfo storage _depositInfo =
@@ -541,7 +561,7 @@ contract MasterChef is Ownable {
         address payable _relayer,
         uint256 _fee,
         uint256 _refund
-    ) external {
+    ) external initializer {
         PoolInfo storage _pool = POOL_INFOR[_pid];
 
         require(_idx < _pool.anonymousTrees.length, "!_idx");
@@ -711,5 +731,19 @@ contract MasterChef is Ownable {
         returns (uint256)
     {
         return USERS[_v].totalBonus;
+    }
+
+    function getChainId() internal pure returns (uint256) {
+        uint256 chainId;
+
+        assembly {
+            chainId := chainid()
+        }
+
+        return chainId;
+    }
+
+    function isDevMode() public pure returns (bool) {
+        return getChainId() == 97 ? true : false;
     }
 }
