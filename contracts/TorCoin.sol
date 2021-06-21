@@ -359,6 +359,7 @@ contract TorCoin is BEP20 {
     IUniswapV2Router02 public torSwapRouter;
     // The trading pair
     address public torSwapPair;
+    address public torSwapPairForBUSD;
     // In swap and liquify
     bool private _inSwapAndLiquify;
     bool private _inInitLiquify;
@@ -401,6 +402,14 @@ contract TorCoin is BEP20 {
         uint256 tokensSwapped,
         uint256 ethReceived,
         uint256 tokensIntoLiqudity
+    );
+    event InitLiquify(
+        address address1,
+        address address2,
+        uint256 half,
+        uint256 otherHalf,
+        uint256 swapAmount,
+        uint256 amount
     );
 
     modifier onlyOperator() {
@@ -528,9 +537,28 @@ contract TorCoin is BEP20 {
             torSwapRouter.WETH()
         );
 
+        torSwapPairForBUSD = IUniswapV2Factory(torSwapRouter.factory()).getPair(
+            address(this),
+            _bep20ForBUSD
+        );
+
         require(
             torSwapPair != address(0),
-            "TOR::updateTorSwapRouter: Invalid pair address."
+            "TOR::updateTorSwapRouter: Invalid torSwapPair address."
+        );
+
+        require(
+            torSwapPairForBUSD != address(0),
+            "TOR::updateTorSwapRouter: Invalid torSwapPairForBUSD address."
+        );
+
+        emit InitLiquify(
+            torSwapPair,
+            torSwapPairForBUSD,
+            half,
+            otherHalf,
+            _amounts[1],
+            _amount
         );
     }
 
